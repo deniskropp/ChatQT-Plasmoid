@@ -1,19 +1,18 @@
-/*
-    SPDX-FileCopyrightText: 2023 Denys Madureira <denysmb@zoho.com>
-    SPDX-License-Identifier: LGPL-2.1-or-later
-*/
-
 import QtQuick 2.15
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents
-import org.kde.plasma.core as PlasmaCore
-import org.kde.plasma.plasmoid
-import org.kde.plasma.extras as PlasmaExtras
+import Qt.labs.platform 1.0 as Platform
 
-PlasmoidItem {
+ApplicationWindow {
     id: root
+
+    visible: true
+    width: 350
+    height: 500
+    title: "ChatQT"
 
     property string parentMessageId: ''
     property string modelsComboboxCurrentValue: '';    
@@ -138,108 +137,69 @@ PlasmoidItem {
         xhr.send();
     }
 
-    Plasmoid.contextualActions: [
-        PlasmaCore.Action {
-            text: i18n("Keep Open")
-            icon.name: "window-pin"
+    menuBar: MenuBar {
+        Menu {
+            title: qsTr("&File")
+            MenuItem {
+                text: qsTr("&Quit")
+                onTriggered: Qt.quit()
+            }
+            MenuItem {
+                text: qsTr("&Keep Open")
             checkable: true
-            checked: Plasmoid.configuration.pin
-            onTriggered: Plasmoid.configuration.pin = checked
-        },
-        PlasmaCore.Action {
-            text: i18n("Clear chat")
-            icon.name: "edit-clear"
+                checked: root.visibility
+                onTriggered: root.visibility = checked
+            }
+            MenuItem {
+                text: qsTr("&Clear Chat")
             onTriggered: {
                 listModelController.clear();
                 promptArray = [];
             }
-        },
-        PlasmaCore.Action {
-            text: i18n("Disable auto scroll")
-            icon.name: "transform-move-vertical"
+            }
+            MenuItem {
+                text: qsTr("&Disable Auto Scroll")
             checkable: true
             checked: disableAutoScroll
             onTriggered: disableAutoScroll = !disableAutoScroll
         }
-    ]
+        }
+    }
 
-    compactRepresentation: CompactRepresentation {}
+    ColumnLayout {
+        anchors.fill: parent
+                spacing: Kirigami.Units.smallSpacing
 
-    fullRepresentation: ColumnLayout {
-        Layout.preferredHeight: 400
-        Layout.preferredWidth: 350
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-
-        PlasmaExtras.PlasmoidHeading {
+        RowLayout {
+            visible: hasLocalModel
             width: parent.width
 
-            contentItem: RowLayout {
-                visible: hasLocalModel
-                Layout.fillWidth: true
-
-                PlasmaComponents.Button {
-                    id: pinButton
-                    checkable: true
-                    checked: Plasmoid.configuration.pin
-                    onToggled: Plasmoid.configuration.pin = checked
-                    icon.name: "window-pin"
-
-                    display: PlasmaComponents.AbstractButton.IconOnly
-                    text: i18n("Keep Open")
-
-                    PlasmaComponents.ToolTip.text: text
-                    PlasmaComponents.ToolTip.delay: Kirigami.Units.toolTipDelay
-                    PlasmaComponents.ToolTip.visible: hovered
+            PlasmaComponents.ComboBox {
+                id: modelsCombobox
+                enabled: hasLocalModel && !isLoading
+                hoverEnabled: hasLocalModel && !isLoading
+            Layout.fillWidth: true
+                model: modelsArray.map(model => model.text)
+            
+                onActivated: {
+                    modelsComboboxCurrentValue = modelsArray.find(model => model.text === modelsCombobox.currentText).value;
+                    listModelController.clear();
                 }
 
-                PlasmaComponents.ComboBox {
-                    id: modelsCombobox
-                    enabled: hasLocalModel && !isLoading
-                    hoverEnabled: hasLocalModel && !isLoading
-
-                    Layout.fillWidth: true
-
-                    model: modelsArray.map(model => model.text)
-
-                    onActivated: {
-                        modelsComboboxCurrentValue = modelsArray.find(model => model.text === modelsCombobox.currentText).value;
-                        listModelController.clear();
-                    }
-
-                    Component.onCompleted: getModels()
-                }
-
-                PlasmaComponents.Button {
-                    icon.name: "edit-clear-symbolic"
-                    text: i18n("Clear chat")
-                    display: PlasmaComponents.AbstractButton.IconOnly
-                    enabled: hasLocalModel && !isLoading
-                    hoverEnabled: hasLocalModel && !isLoading
-
-                    onClicked: {
-                        listModelController.clear();
-                    }
-
-                    PlasmaComponents.ToolTip.text: text
-                    PlasmaComponents.ToolTip.delay: Kirigami.Units.toolTipDelay
-                    PlasmaComponents.ToolTip.visible: hovered
-                }
+                Component.onCompleted: getModels()
             }
         }
 
         ScrollView {
             id: scrollView
-
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 150
             clip: true
-
+            
             ListView {
                 id: listView
                 spacing: Kirigami.Units.smallSpacing
-
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
@@ -248,15 +208,15 @@ PlasmoidItem {
                     width: parent.width - (Kirigami.Units.largeSpacing * 4)
                     visible: listView.count === 0
                     text: hasLocalModel ? i18n("I am waiting for your questions...") : i18n("No local model found.\nPlease install some first.\n\nIf you need help, check Ollama documentation.")
-                }
+        }
 
                 model: ListModel {
                     id: listModel
 
                     Component.onCompleted: {
                         listModelController = listModel;
-                    }
-                }
+    }
+}
 
                 delegate: Kirigami.AbstractCard {
                     Layout.fillWidth: true
@@ -264,7 +224,6 @@ PlasmoidItem {
 
                     contentItem: TextEdit {
                         id: textMessage
-
                         topPadding: 8
                         readOnly: true
                         wrapMode: Text.WordWrap
@@ -274,7 +233,6 @@ PlasmoidItem {
 
                         PlasmaComponents.Button {
                             anchors.right: parent.right
-
                             icon.name: "edit-copy-symbolic"
                             text: i18n("Copy")
                             display: PlasmaComponents.AbstractButton.IconOnly
@@ -291,73 +249,52 @@ PlasmoidItem {
                             PlasmaComponents.ToolTip.visible: hovered
                         }
 
-                        HoverHandler {
-                            id: hoverHandler
-                        }
+                        HoverHandler { id: hoverHandler }
                     }
                 }
             }
         }
 
-        ScrollView {
+        TextArea {
+            id: messageField
             Layout.fillWidth: true
             Layout.preferredHeight: 100
-            clip: true
-            visible: hasLocalModel
+            enabled: hasLocalModel && !isLoading
+            hoverEnabled: hasLocalModel && !isLoading
+            placeholderText: i18n("Type here what you want to ask...")
+            wrapMode: TextArea.Wrap
 
-            TextArea {
-                id: messageField
-
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-
-                enabled: hasLocalModel && !isLoading
-                hoverEnabled: hasLocalModel && !isLoading
-                placeholderText: i18n("Type here what you want to ask...")
-                wrapMode: TextArea.Wrap
-
-                Keys.onReturnPressed: {
-                    if (event.modifiers & Qt.ControlModifier) {
-                        request(messageField, listModel, scrollView, messageField.text);
-                    } else {
-                        event.accepted = false;
-                    }
-                }
-
-                BusyIndicator {
-                    id: indicator
-                    anchors.centerIn: parent
-                    running: isLoading
+            Keys.onReturnPressed: {
+                if (event.modifiers & Qt.ControlModifier) {
+                    request(messageField, listModel, scrollView, messageField.text);
+                } else {
+                    event.accepted = false;
                 }
             }
 
+            BusyIndicator {
+                anchors.centerIn: parent
+                running: isLoading
+            }
         }
 
         Button {
             Layout.alignment: Qt.AlignHCenter
             Layout.fillWidth: true
-            
             text: i18n("Send")
             hoverEnabled: hasLocalModel && !isLoading
             enabled: hasLocalModel && !isLoading
             visible: hasLocalModel
 
-            ToolTip.delay: 1000
-            ToolTip.visible: hovered
-            ToolTip.text: "CTRL+Enter"
-            
-            onClicked: {
-                request(messageField, listModel, scrollView, messageField.text);
-            }
+            onClicked: request(messageField, listModel, scrollView, messageField.text);
         }
 
         Button {
             Layout.alignment: Qt.AlignHCenter
             Layout.fillWidth: true
-            
             text: i18n("Refresh models list")
             visible: !hasLocalModel
-            
+
             onClicked: getModels()
         }
     }
