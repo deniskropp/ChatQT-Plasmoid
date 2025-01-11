@@ -15,37 +15,46 @@ ApplicationWindow {
     title: "ChatQT"
 
     property string parentMessageId: ''
-    property string modelsComboboxCurrentValue: '';    
-    property var listModelController;
-    property var promptArray: [];
-    property var modelsArray: [];
+    property string modelsComboboxCurrentValue: ''
+    property var listModelController
+    property var promptArray: []
+    property var modelsArray: []
     property bool isLoading: false
-    property bool hasLocalModel: false;
-    property bool disableAutoScroll: false;
+    property bool hasLocalModel: false
+    property bool disableAutoScroll: false
+    property string systemPrompt: ""
+    property string apiUrl: "http://v2:11434/api"
 
     function parseTextToComboBox(text) {
-        return text
-            .replace(/-/g, ' ')
-            .replace(/:(.+)/, ' ($1)')
-            .split(' ')
-            .map(word => {
-                if (word.startsWith('(')) {
-                    return word.charAt(0) + word.charAt(1).toUpperCase() + word.slice(2);
-                }
-                return word.charAt(0).toUpperCase() + word.slice(1);
-            })
-            .join(' ');
+        return text.replace(/-/g, ' ').replace(/:(.+)/, ' ($1)').split(' ').map(word => {
+            if (word.startsWith('(')) {
+                return word.charAt(0) + word.charAt(1).toUpperCase() + word.slice(2);
+            }
+            return word.charAt(0).toUpperCase() + word.slice(1);
+        }).join(' ');
     }
 
     function request(messageField, listModel, scrollView, prompt) {
-        messageField.text = '';
+        //messageField.text = '';
 
         listModel.append({
             "name": "User",
             "number": prompt
         });
 
-        promptArray.push({ "role": "user", "content": prompt, "images": [] });
+        let messages = [];
+        if (systemPrompt.trim() !== "") {
+            messages.push({
+                "role": "system",
+                "content": systemPrompt
+            });
+        }
+        messages.push({
+            "role": "user",
+            "content": prompt,
+            "images": []
+        });
+        promptArray = messages;
 
         isLoading = true;
 
@@ -54,19 +63,19 @@ ApplicationWindow {
         }
 
         const oldLength = listModel.count;
-        const url = 'http://127.0.0.1:11434/api/chat';
+        const url = apiUrl + '/chat';
         const data = JSON.stringify({
             "model": modelsComboboxCurrentValue,
             "keep_alive": "5m",
             "options": {},
-            "messages": promptArray
+            "messages": messages
         });
-        
+
         let xhr = new XMLHttpRequest();
 
         xhr.open('POST', url, true);
         xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.onreadystatechange = function() {
+        xhr.onreadystatechange = function () {
             const objects = xhr.responseText.split('\n');
             let text = '';
 
@@ -74,7 +83,7 @@ ApplicationWindow {
                 const parsedObject = JSON.parse(object);
                 text = text + parsedObject?.message?.content;
 
-                if (index === 0 ) {
+                if (index === 0) {
                     text = text.trim();
                 }
 
@@ -95,30 +104,33 @@ ApplicationWindow {
             });
         };
 
-        xhr.onload = function() {
+        xhr.onload = function () {
             const lastValue = listModel.get(oldLength);
 
             isLoading = false;
 
-            promptArray.push({ "role": "assistant", "content": lastValue.number, "images": [] });
+            promptArray.push({
+                "role": "assistant",
+                "content": lastValue.number,
+                "images": []
+            });
         };
 
         xhr.send(data);
     }
 
     function getModels() {
-        const url = 'http://127.0.0.1:11434/api/tags';
-
+        const url = apiUrl + '/tags';
         let xhr = new XMLHttpRequest();
 
         xhr.open('GET', url);
         xhr.setRequestHeader('Content-Type', 'application/json');
 
-        xhr.onreadystatechange = function() {
+        xhr.onreadystatechange = function () {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 if (xhr.status === 200) {
                     const objects = JSON.parse(xhr.responseText).models;
-                    
+
                     const models = objects.map(object => object.model);
 
                     if (models.length) {
@@ -126,7 +138,10 @@ ApplicationWindow {
 
                         modelsComboboxCurrentValue = models[0];
 
-                        modelsArray = models.map(model => ({ text: parseTextToComboBox(model), value: model }));
+                        modelsArray = models.map(model => ({
+                                    text: parseTextToComboBox(model),
+                                    value: model
+                                }));
                     }
                 } else {
                     console.error('Erro na requisição:', xhr.status, xhr.statusText);
@@ -146,41 +161,52 @@ ApplicationWindow {
             }
             MenuItem {
                 text: qsTr("&Keep Open")
-            checkable: true
+                checkable: true
                 checked: root.visibility
                 onTriggered: root.visibility = checked
             }
             MenuItem {
                 text: qsTr("&Clear Chat")
-            onTriggered: {
-                listModelController.clear();
-                promptArray = [];
-            }
+                onTriggered: {
+                    listModelController.clear();
+                    promptArray = [];
+                }
             }
             MenuItem {
                 text: qsTr("&Disable Auto Scroll")
-            checkable: true
-            checked: disableAutoScroll
-            onTriggered: disableAutoScroll = !disableAutoScroll
-        }
+                checkable: true
+                checked: disableAutoScroll
+                onTriggered: disableAutoScroll = !disableAutoScroll
+            }
         }
     }
 
     ColumnLayout {
         anchors.fill: parent
-                spacing: Kirigami.Units.smallSpacing
+        spacing: Kirigami.Units.smallSpacing
 
         RowLayout {
-            visible: hasLocalModel
+            //visible: hasLocalModel
             width: parent.width
+
+            TextField {
+                id: urlField
+                Layout.fillWidth: true
+                text: apiUrl
+                placeholderText: "API URL"
+                onTextChanged: {
+                    apiUrl = text
+                    hasLocalModel = false
+                }
+            }
 
             PlasmaComponents.ComboBox {
                 id: modelsCombobox
                 enabled: hasLocalModel && !isLoading
                 hoverEnabled: hasLocalModel && !isLoading
-            Layout.fillWidth: true
+                Layout.fillWidth: true
                 model: modelsArray.map(model => model.text)
-            
+
                 onActivated: {
                     modelsComboboxCurrentValue = modelsArray.find(model => model.text === modelsCombobox.currentText).value;
                     listModelController.clear();
@@ -196,7 +222,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             Layout.minimumHeight: 150
             clip: true
-            
+
             ListView {
                 id: listView
                 spacing: Kirigami.Units.smallSpacing
@@ -208,15 +234,15 @@ ApplicationWindow {
                     width: parent.width - (Kirigami.Units.largeSpacing * 4)
                     visible: listView.count === 0
                     text: hasLocalModel ? i18n("I am waiting for your questions...") : i18n("No local model found.\nPlease install some first.\n\nIf you need help, check Ollama documentation.")
-        }
+                }
 
                 model: ListModel {
                     id: listModel
 
                     Component.onCompleted: {
                         listModelController = listModel;
-    }
-}
+                    }
+                }
 
                 delegate: Kirigami.AbstractCard {
                     Layout.fillWidth: true
@@ -237,7 +263,7 @@ ApplicationWindow {
                             text: i18n("Copy")
                             display: PlasmaComponents.AbstractButton.IconOnly
                             visible: hoverHandler.hovered
-                            
+
                             onClicked: {
                                 textMessage.selectAll();
                                 textMessage.copy();
@@ -249,9 +275,24 @@ ApplicationWindow {
                             PlasmaComponents.ToolTip.visible: hovered
                         }
 
-                        HoverHandler { id: hoverHandler }
+                        HoverHandler {
+                            id: hoverHandler
+                        }
                     }
                 }
+            }
+        }
+
+        TextArea {
+            id: systemPromptField
+            Layout.fillWidth: true
+            Layout.preferredHeight: 150
+            enabled: hasLocalModel && !isLoading
+            hoverEnabled: hasLocalModel && !isLoading
+            placeholderText: i18n("Type system prompt here...")
+            wrapMode: TextArea.Wrap
+            onTextChanged: {
+                systemPrompt = text;
             }
         }
 
@@ -277,7 +318,6 @@ ApplicationWindow {
                 running: isLoading
             }
         }
-
         Button {
             Layout.alignment: Qt.AlignHCenter
             Layout.fillWidth: true
@@ -286,7 +326,7 @@ ApplicationWindow {
             enabled: hasLocalModel && !isLoading
             visible: hasLocalModel
 
-            onClicked: request(messageField, listModel, scrollView, messageField.text);
+            onClicked: request(messageField, listModel, scrollView, messageField.text)
         }
 
         Button {
